@@ -19,8 +19,12 @@ function getFieldWasRequestedOnNode(node, field) {
 }
 
 function fieldAvailableOnType(type, field) {
+  if (!type) {
+    return false;
+  }
+
   return (
-    (type && type._fields && type._fields[field]) ||
+    (type._fields && type._fields[field]) ||
     (type.ofType && fieldAvailableOnType(type.ofType, field))
   );
 }
@@ -38,9 +42,7 @@ export function RequiredFields(context, options) {
           if (!fieldWasRequested) {
             context.reportError(
               new GraphQLError(
-                `'${field}' field required on 'fragment ${node.name.value} on ${
-                  node.typeCondition.name.value
-                }'`,
+                `'${field}' field required on 'fragment ${node.name.value} on ${node.typeCondition.name.value}'`,
                 [node]
               )
             );
@@ -63,11 +65,11 @@ export function RequiredFields(context, options) {
 
           const ancestorClone = [...ancestors];
 
-          let nearestField;
+          let nearestFieldOrExecutableDefinition;
           let nextAncestor;
 
-          // Now, walk up the ancestors, until you see a field.
-          while (!nearestField) {
+          // Now, walk up the ancestors, until you see a field or executable definition.
+          while (!nearestFieldOrExecutableDefinition) {
             nextAncestor = ancestorClone.pop();
 
             if (
@@ -77,25 +79,27 @@ export function RequiredFields(context, options) {
               return true;
             }
 
-            if (nextAncestor.kind === "Field") {
-              nearestField = nextAncestor;
+            if (
+              nextAncestor.kind === "Field" ||
+              nextAncestor.kind === "FragmentDefinition" ||
+              nextAncestor.kind === "OperationDefiniton"
+            ) {
+              nearestFieldOrExecutableDefinition = nextAncestor;
             }
           }
 
-          // If we never found a field, the query is malformed
-          if (!nearestField) {
+          // If we never found a field or executable definition, the query is malformed
+          if (!nearestFieldOrExecutableDefinition) {
             throw new Error(
-              "Inline fragment found inside document without a parent field."
+              "Inline fragment found inside document without a parent field, fragment definition, or operation definition."
             );
           }
 
-          // We found a field, but we never saw the field we were looking for in
+          // We found a field or executable definition, but we never saw the field we were looking for in
           // the intermediate selection sets.
           context.reportError(
             new GraphQLError(
-              `'${field}' field required on '... on ${
-                node.typeCondition.name.value
-              }'`,
+              `'${field}' field required on '... on ${node.typeCondition.name.value}'`,
               [node]
             )
           );
